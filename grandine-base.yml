@@ -1,0 +1,73 @@
+version: "3.4"
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+      tag: '{{.ImageName}}|{{.Name}}|{{.ImageFullID}}|{{.FullID}}'
+
+services:
+  consensus:
+    restart: "${RESTART}"
+    build:
+      context: ./grandine
+      dockerfile: Dockerfile.binary
+      args:
+        - BUILD_TARGET=${GRANDINE_SRC_BUILD_TARGET}
+        - DOCKER_TAG=${GRANDINE_DOCKER_TAG}
+    image: grandine:local
+    user: grandine
+    stop_grace_period: 1m
+    volumes:
+      - grandine-data:/var/lib/grandine
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - ${CC_P2P_PORT:-9000}:${CC_P2P_PORT:-9000}/tcp
+      - ${CC_P2P_PORT:-9000}:${CC_P2P_PORT:-9000}/udp
+    expose:
+      - 9001/tcp
+    networks:
+      default:
+        aliases:
+          - eth2
+    <<: *logging
+    entrypoint:
+      - grandine
+      - --data-dir
+      - /var/lib/grandine
+      - --http-address
+      - 0.0.0.0
+      - --http-port
+      - "9001"
+      - --network
+      - ${NETWORK}
+      - --libp2p-port
+      - ${CC_P2P_PORT:-9000}
+      - --eth1-rpc-urls
+      - ${EC_NODE}
+      - --metrics
+      - --graffiti
+      - ${GRAFFITI}
+      - --keystore-dir
+      - /var/lib/grandine/validator-keys
+      - --keystore-password-file
+      - /var/lib/grandine/validator-passwords
+  validator-import:
+    restart: "no"
+    image: grandine:local
+    user: root
+    volumes:
+      - grandine-data:/var/lib/grandine
+      - ${DEPCLI_LOCALDIR}/validator_keys:/validator_keys
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - KEYSTORE_PASSWORD=${KEYSTORE_PASSWORD:-''}
+    entrypoint: /usr/local/bin/validator-import.sh
+  eth:
+    image: tianon/true
+    restart: "no"
+    depends_on:
+      - consensus
+volumes:
+  grandine-data:
